@@ -1062,12 +1062,68 @@ auto world = *HEXINTON::CGlobals::GWorldCharMan;
 
 ## 4.3 突破路径
 
-| 方案       | 工具                  | 可行性          | 详情                                |
-| -------- | ------------------- | ------------ | --------------------------------- |
-| 动态调试脱壳   | x64dbg + ScyllaHide | ✅ 已安装        | 见 `unpack_guide.md`               |
-| 自动化脚本    | headless.exe + 脚本   | ⚠️ 未测试       | 见 `unpack_ersc.txt`               |
-| 静态去混淆    | themida-unmutate    | 中，仅处理代码变异    | GitHub: ergrelet/themida-unmutate |
-| 运行时 hook | 自定义 Frida 脚本        | 中，需绕过反 Frida | Frida 已安装                         |
+| 方案 | 工具 | 可行性 | 详情 |
+|------|------|--------|------|
+| 动态调试脱壳 | x64dbg + ScyllaHide | ✅ 已安装 | 见 `unpack_guide.md` |
+| 自动化脚本 | headless.exe + 脚本 | ⚠️ 未测试 | 见 `unpack_ersc.txt` |
+| 静态去混淆 | themida-unmutate | 中，仅处理代码变异 | GitHub: ergrelet/themida-unmutate |
+| 运行时 hook | 自定义 Frida 脚本 | 中，需绕过反 Frida | Frida 已安装 |
+| **① Themidie** | x64dbg 插件 | ⭐ 最推荐 | 专攻 Themida 3.x，hook 6 个 API |
+| **② Magicmida** | 自动脱壳机 | ⭐ 可尝试 | 三阶段硬件断点 + PAGE_NOACCESS |
+| **③ unlicense 0.4.0** | Py+Frida | 中 | 新增 --no_imports + IAT 改进 |
+| **④ themida-unmutate** | 符号执行 | 中 | 支持到 3.1.9，按地址去混淆 |
+| **⑤ bobalkkagi** | 静态脱壳 | 低（韩文） | Themida 3.1.x 静态脱壳机 |
+
+## 4.4 Themida 突破方向详细评估
+
+### 4.4.1 Themidie — 最推荐：x64dbg 反反调试插件
+
+**来源**：[VenTaz/Themidie](https://github.com/VenTaz/Themidie)（556 stars）
+
+专门针对 Themida 3.x x64 的 x64dbg 插件。ScyllaHide 在某些 Themida 3.x 版本中失效（Exetools 论坛有同样报告），Themidie 填补了这个空缺。Hook 以下 6 个关键 API：
+
+| 模块 | 函数 | 拦截目的 |
+|------|------|---------|
+| kernel32.dll | GetModuleHandleA | 反检测调试器模块枚举 |
+| user32.dll | FindWindowA | 反检测调试器窗口搜索 |
+| Advapi32.dll | RegOpenKeyA | 反检测注册表检查 |
+| Advapi32.dll | RegQueryValueExA | 反检测注册表值读取 |
+| ntdll.dll | NtSetInformationThread | 反检测线程隐藏 |
+| ntdll.dll | NtQueryVirtualMemory | 反检测内存扫描 |
+
+**使用流程**：下载 Themidie.dp64 → 放入 x64dbg plugins 目录 → ScyllaHide 关闭所有选项，仅开 "Kill Anti-Attach" → Plugins → Themidie → Start。这是我们目前绕过 Themida 调试检测的最优方案。
+
+### 4.4.2 Magicmida — 自动脱壳机
+
+**来源**：[Hendi48/Magicmida](https://github.com/Hendi48/Magicmida)
+
+x64 路径的核心流程（来自 Themida64.pas 源码）：
+
+1. 强制注入 ScyllaHide
+2. **三阶段硬件断点链**：
+   - Phase 1：CloseHandle 执行 × .text+0x1000 写断点
+   - Phase 2：Themida 正在写第一页 → VirtualAlloc 执行断点
+   - Phase 3：解壳完成 → PAGE_NOACCESS 护页
+3. `.text` 段设 PAGE_NOACCESS → 代码首次执行触发异常 = OEP 捕获
+4. 合成 MSVC OEP stub（修复被盗字节）
+5. TraceImports + DetermineIATAddress → 重建 IAT
+
+已知限制：DLL 脱壳丢失重定位；不修复 VM anti-dump。ersc.dll 加载位置固定，前者不是问题。
+
+### 4.4.3 themida-unmutate — 符号执行去混淆
+
+**来源**：[ergrelet/themida-unmutate](https://github.com/ergrelet/themida-unmutate)（342 stars）
+
+基于 **miasm** 符号执行引擎，支持到 Themida **3.1.9**。可按指定地址去混淆单个函数，支持自动解析 trampoline、重建可运行二进制。如果只关心 `.themida` 段中的大厅状态机代码（而非完整脱壳），可以定向去混淆后再分析。
+
+### 4.4.4 推荐优先级
+
+| 顺序 | 方案 | 投入 | 预期产出 |
+|------|------|------|---------|
+| 1 | 安装 **Themidie** | 5 分钟 | 正常调试 ersc.dll 不崩溃 |
+| 2 | **unlicense 0.4.0** `--no_imports` | 10 分钟 | 可能成功的 OEP dump |
+| 3 | 编译 **Magicmida** 自动脱壳 | 1 小时 | 完整脱壳 DLL（含 IAT） |
+| 4 | **themida-unmutate** 去混淆 `.themida` | 数小时 | 可分析的大厅状态机代码 |
 
 ###  4.3.1 unlicense 尝试记录
 
