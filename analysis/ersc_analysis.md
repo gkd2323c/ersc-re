@@ -121,7 +121,36 @@ ersc/
 - **SHA256 哈希**：数据完整性校验
 - **数字签名**：rsaEncryption、sha256WithRSAEncryption、sha512WithRSAEncryption
 
+## 2.4 双壳保护：Themida + Arxan（2026-05-10 补充）
+
+**ersc.dll 受到两层保护：**
+
+| 层级 | 保护工具 | 保护对象 | 作用 |
+|------|---------|---------|------|
+| **DLL 层** | Themida 3.x | `ersc.dll` 自身 | 反调试、反 dump、代码加密、IAT 混淆 |
+| **游戏进程层** | Arxan（现名 GuardIT） | `eldenring.exe` 的代码 | 反篡改、代码完整性校验、代码自动修复 |
+
+> 来源：[Reversing Arxan (GuardIT)](https://me3.help/en/latest/blog/posts/arxan-reversing-1/)，作者为 me3 项目开发者。
+
+**Arxan 的工作原理**（与我们的逆向直接相关）：
+
+Yui 的 Seamless Co-op 需要在游戏代码中打"数百个 hook"。这些 hook 修改了受 Arxan 保护的函数。Arxan 通过定时器周期性检查被修改的代码区域，发现篡改后会：
+
+1. 静默写标志位 → FromSoftware 用来封禁在线作弊者
+2. 破坏栈/控制流使游戏崩溃（难以调试）
+3. **自动修复被修改的代码**
+
+Yui 的绕过方案：扫描定时器模式 → 把条件跳转 `JC` 改为无条件跳转 `JMP`，使校验永不执行。在 Elden Ring 中这种定时器模式非常规律（16.67ms 帧间隔倒计时，到期后调用 `arxan_code_restoration_check()`）。
+
+**关键影响**：
+- Frida 的 `Interceptor.attach()` 修改了 `.text` 代码，可能触发 Arxan（不仅是 Themida）的完整性校验
+- x64dbg 的软件断点（`int3`）同样修改代码，在 Arxan 保护的区域内使用会立即崩溃
+- 这就是我们动态追踪闪退的真正原因：**Themida + Arxan 双重检测**
+
 ## 2.3 反作弊
+
+- **CSCheatDetectionSpider**：运行时检测内存补丁/修改
+- **存档隔离**：使用独立存档，声明 `"It does not contain an anticheat"`（但内置 Spider 检测）
 
 - **CSCheatDetectionSpider**：运行时检测内存补丁/修改
 - **存档隔离**：使用独立存档，声明 `"It does not contain an anticheat"`（但内置 Spider 检测）
@@ -858,7 +887,42 @@ r8  = 0x0, 0x0, 0x1  (标志位)
 ### 3.11.4 闪退原因
 
 - Themida 3.x 检测到 `Interceptor.attach()` 的内存 patch
+- 更重要的：**Arxan 检测到游戏代码被修改**（Frida 在 Elden Ring 进程空间内操作，触发了第二层保护）
 - 后续可尝试 Stalker（指令追踪，不 patch 代码）或硬件断点
+
+### 3.11.5 改进的动态追踪方案
+
+**发现：ModEngine 2 内置了 ScyllaHide 支持。**
+
+在 `config_eldenring.toml` 中：
+
+```toml
+[extension.scylla_hide]
+enabled = true    # 改为 true 即可启用
+```
+
+启用后，ModEngine 2 会在启动游戏时自动注入 ScyllaHide，绕过 Arxan 的反调试检测。之后可以直接用 x64dbg attach 到 `eldenring.exe` 进程，在 `ersc.dll` 的函数上设断点。
+
+**操作步骤**：
+1. 修改 Mod Engine 2 的 `config_eldenring.toml`，启用 `scylla_hide`
+2. 通过 Mod Engine 2 启动 Elden Ring
+3. x64dbg → File → Attach → 选择 `eldenring.exe`
+4. 在 `ersc.dll` 模块中设断点（`ersc.dll + 0x26eb0` 等）
+5. 在游戏中触发联机操作
+
+**为什么要用这个方案而不是 Frida**：
+- ScyllaHide 是专门针对 Arxan/Themida 的反反调试插件，Frida 不是
+- ModEngine 2 已经在游戏启动时注入了 ScyllaHide，绕过了第一波反调试检测
+- x64dbg 的硬件断点（DR0-DR3，4 个）不修改代码，不会被完整性校验检测到
+
+### 3.11.6 外部参考资料
+
+| 来源 | 内容 | 与我们工作的关系 |
+|------|------|----------------|
+| [Reversing Arxan (GuardIT)](https://me3.help/en/latest/blog/posts/arxan-reversing-1/) | Arxan stub 结构、定时器校验机制、dearxan 工具 | 解释了闪退根因，提供了彻底的 Arxan 绕过方案 |
+| [boblord14/SeamlessCoopExtension](https://github.com/boblord14/SeamlessCoopExtension) | 基于 Seamless Co-op 的自定义游戏模式扩展，含 Cheat Engine 表 + DLL 脚本 | 有对 ersc.dll 的 hook 和内存读写代码，可直接参考地址 |
+| [soulsmods/ModEngine2](https://github.com/soulsmods/ModEngine2) | Mod Engine 2 源码，含扩展/插件系统和 ScyllaHide 集成 | 解释了 `modengine_ext_init` 的完整宿主环境 |
+| [ersc-docs.github.io](https://ersc-docs.github.io/) | Yui 的官方文档 | 安装和 Mod 兼容性指南 |
 
 ---
 
