@@ -924,6 +924,69 @@ enabled = true    # 改为 true 即可启用
 | [soulsmods/ModEngine2](https://github.com/soulsmods/ModEngine2) | Mod Engine 2 源码，含扩展/插件系统和 ScyllaHide 集成 | 解释了 `modengine_ext_init` 的完整宿主环境 |
 | [ersc-docs.github.io](https://ersc-docs.github.io/) | Yui 的官方文档 | 安装和 Mod 兼容性指南 |
 
+## 3.12 SeamlessCoopExtension 源码分析（2026-05-10）
+
+> 来源：[boblord14/SeamlessCoopExtension](https://github.com/boblord14/SeamlessCoopExtension)，本地 clone 后分析 C++ 代码。
+
+### 3.12.1 AOB 签名（可直接用于后续动态调试）
+
+该项目通过 AOB 模式扫描在 `eldenring.exe` 中定位关键函数：
+
+| 函数 | AOB 签名 | 用途 |
+|------|---------|------|
+| WorldChrMan | `48 8B 05 ?? ?? ?? ?? 48 85 C0 74 0F 48 39 88` | 世界角色管理器全局指针 |
+| GameMan | `48 8B 05 ?? ?? ?? ?? 80 B8 ?? ?? ?? ?? 0D 0F 94 C0 C3` | 游戏管理器全局指针 |
+| EventFlagManager | `48 8B 3D ?? ?? ?? ?? 48 85 FF ?? ?? 32 C0 E9` | 事件标志管理器全局指针 |
+| spEffectApply | `48 8B C4 48 89 58 08 48 89 70 10 57 48 81 EC ?? ?? ?? ?? 0F 28 05 ?? ?? ?? ?? 48 8B F1 0F 28 0D ?? ?? ?? ?? 48 8D 48 88` | 特殊效果应用函数 |
+| entityID→ChrIns | `48 89 5c 24 08 48 89 74 24 10 48 89 7c 24 18 41 56 48 83 ec ?? 48 8b 3d ?? ?? ?? ?? 33 db 49 8b f0 4c 8b f1 48 85 ff` | 实体 ID 转角色实例 |
+| damageApply | `4C 8B DC 55 53 56 57 41 56 41 57 49 8D 6B 88 48 81 EC 48 01 00 00` | 伤害计算函数 |
+
+### 3.12.2 游戏数据结构（交叉验证）
+
+**WorldChrMan 玩家数组**：
+
+```
+[WorldChrMan + 0x10EF8] → PlayerArray[]
+  PlayerArray[slot] (步长 0x10):
+    +0x00: ChrIns* playerIns
+    +0x08: unknown
+```
+
+> ⚠️ 注意：此处的 `0x10EF8` 是 WorldChrMan 对象内部的指针偏移，与我们在会话语境中看到的 `[session_obj + 0x10EE8]` 和 `[session_obj + 0x10F98]` 是**不同的基对象和不同的语义**。
+
+**玩家属性链**（从 PlayerArray[0] 开始）：
+
+| 属性 | 指针链 | 类型 |
+|------|--------|------|
+| HP | +0x10EF8 → [0] → +0x190 → +0x138 | int |
+| MaxHP | +0x10EF8 → [0] → +0x190 → +0x13C | int |
+| Idle Animation | +0x10EF8 → [0] → +0x190 → +0x58 → +0x18 | int |
+| Current Animation | +0x10EF8 → [0] → +0x190 → +0x58 → +0x20 | int |
+| X Position | +0x10EF8 → [0] → +0x190 → +0x68 → +0x70 | float |
+| Y Position | +0x10EF8 → [0] → +0x190 → +0x68 → +0x78 | float |
+| Z Position | +0x10EF8 → [0] → +0x190 → +0x68 → +0x74 | float |
+| iFrames | +0x10EF8 → [slot] → +0x190 → +0x8 → +0x40 bit 1 | bool |
+
+**ChrIns 结构**：
+
+| 偏移 | 类型 | 含义 |
+|------|------|------|
+| +0x178 | CSSpecialEffect* | 特殊效果容器 |
+| +0x1E8 | int | Entity ID（感谢 dasaav） |
+
+**GameMan**：
+
+| 偏移 | 含义 |
+|------|------|
+| [GameMan + 0xD60] + 0x1C（或 0x14） | 当前会话玩家数量 |
+
+### 3.12.3 可复用的技术
+
+- **MinHook**：项目使用 MinHook 库做函数 detour，证实绕过了 Arxan
+- **PointerChain**：模板化的多级指针遍历工具，可复用于 Cheat Engine 脚本
+- **Entity ID 体系**：Host 玩家的 Entity ID 固定为 10000，其他玩家为 10001+
+- **事件标志**：使用自定义 EventFlag ID `1024622001` 做复活标记
+
 ---
 
 # 四、不可分析层（.themida）
