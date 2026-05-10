@@ -1,0 +1,135 @@
+// =========================================
+// ersc.dll Themida 3.x Unpacking Script
+// for x64dbg (x64) + ScyllaHide
+// =========================================
+// Target: Elden Ring Seamless Co-op ersc.dll
+// Packer: Themida 3.x
+// Host: loaddll.exe (bundled with x64dbg)
+//
+// Prerequisites:
+// 1. ScyllaHide plugin installed and set to Themida profile
+// 2. steam_api64.dll in same directory as ersc.dll
+//
+// After OEP is found, use Scylla to dump:
+//   Plugins > Scylla > IAT Autosearch > Get Imports > Dump > Fix Dump
+// =========================================
+
+// Clear all existing breakpoints
+bpd
+bphd
+bpmd
+
+// Log start
+msg "ersc.dll Themida 3.x Unpacking Script"
+msg "Make sure ScyllaHide is set to Themida profile!"
+msg "Press OK to continue..."
+
+// =========================================
+// Step 1: Wait for DLL to load
+// We break on LoadLibraryW to catch when
+// the host process loads our target DLL
+// =========================================
+bp LoadLibraryW
+
+msg "Breakpoints set. Run the program now."
+msg "We will break when the DLL is first loaded."
+
+// Run until LoadLibraryW is hit
+run
+
+// Log what's being loaded
+log "[LoadLibraryW] Loading: {s:rcx}"
+
+// Continue - LoadLibrary will be called many times
+// We want to catch all of them to find ersc.dll
+run
+run
+run
+run
+run
+run
+run
+run
+
+// =========================================
+// Step 2: Wait for unpacking signs
+// Themida typically uses VirtualProtect
+// to change memory protections during unpacking
+// =========================================
+
+// Clear previous breakpoints  
+bpc
+bphc
+bpmc
+
+// Set breakpoint on VirtualProtect
+bph VirtualProtect
+
+msg "Now watching for VirtualProtect calls..."
+msg "This indicates Themida is unpacking code."
+run
+
+log "[VirtualProtect] Unpacking detected!"
+
+// =========================================
+// Step 3: Find new executable memory
+// After Themida unpacks, it allocates memory
+// or changes protections on existing sections.
+// We watch for the .themida section to be modified.
+// =========================================
+
+// Continue past initial VirtualProtect calls
+// Themida may call it multiple times
+erun
+erun
+erun
+
+// Clear VirtualProtect breakpoint
+bphc VirtualProtect
+
+// Now set a memory breakpoint on execution
+// in the .themida section (0x18023a000)
+// When code executes there, we've found the stub
+bpm 0x18023a000, x
+
+msg "Memory breakpoint set on .themida section."
+msg "Continuing execution..."
+erun
+
+// We hit the .themida section - this is Themida's code
+// Let it run a bit more and then set breakpoint on .text
+bpmc
+bphc
+
+// Set memory breakpoint on .text section execution
+// This catches when Themida jumps to the real code
+bpm 0x180001000, x
+
+msg "Memory breakpoint set on .text section."
+msg "Waiting for real OEP..."
+erun
+
+// =========================================
+// Step 4: OEP reached
+// We should now be at the real OEP
+// =========================================
+bpmc
+bphc
+
+// Disassemble the current location
+d
+
+// Mark as OEP
+cmt cip, "OEP - real entry point after Themida unpack"
+
+msg "OEP found! Check the disassembly."
+msg "Now use Scylla to dump:"
+msg "1. Plugins > Scylla"
+msg "2. IAT Autosearch"
+msg "3. Get Imports"
+msg "4. Dump"
+msg "5. Fix Dump"
+msg ""
+msg "Select ersc.dll module before dumping!"
+
+ret

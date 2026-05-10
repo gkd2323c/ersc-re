@@ -1,0 +1,25 @@
+# Binary files (not included)
+ersc.dll
+ersc_dumped.exe
+steam_api64.dll
+*.exe
+
+# Python
+__pycache__/
+*.pyc
+.venv*/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+ersc_trace_log.txt
+auto_trace.txt
+
+# Tools (download separately)
+x64dbg/
+ScyllaHide/
+radare2*/
+.omx/
