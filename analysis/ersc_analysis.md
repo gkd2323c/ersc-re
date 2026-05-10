@@ -987,6 +987,61 @@ enabled = true    # 改为 true 即可启用
 - **Entity ID 体系**：Host 玩家的 Entity ID 固定为 10000，其他玩家为 10001+
 - **事件标志**：使用自定义 EventFlag ID `1024622001` 做复活标记
 
+## 3.13 社区逆向资源汇总（2026-05-10）
+
+> 以下是通过全网搜索收集的 Elden Ring 逆向工程关键资源。
+
+### 3.13.1 CT-TGA（The Grand Archives Cheat Table）
+
+**来源**：[The-Grand-Archives/Elden-Ring-CT-TGA](https://github.com/The-Grand-Archives/Elden-Ring-CT-TGA)
+
+最全面的 Elden Ring Cheat Engine 表，含完整的内存结构文档。**直接确认了我们分析的全局偏移**：
+
+| 偏移 | 对象 | 含义 | 与我们分析的关系 |
+|------|------|------|---------------|
+| `WorldChrMan + 0x1E508` | 指针 | 本地玩家实例 | ✅ 我们在 ersc.dll 分析中多次看到此偏移作为"当前会话"引用 |
+| `WorldChrMan + 0x10EF8` | 指针 | NetPlayers 列表（多人角色） | ⚠️ 在 ersc.dll 中这是 WorldChrMan 内部的数组指针，与会话对象中的 `0x10EE8` 不是同一个东西 |
+
+CT-TGA 还记录了完整的游戏内存层次：GameDataMan → PlayerGameData → EquipInventoryData → InventoryItem（含 itemId、quantity 等偏移）。
+
+**Seamless Co-op 事件标志修复**（CT-TGA 的独立模块）：
+用于修复联机中任务进度不同步问题的具体 Flag ID：
+- Ranni 任务：`1034509410`, `1034509412`, `1034509355-1034509358`, `1034509205`, `1034509305-1034509306`, `1034509417`, `1034500734`, `1034509416`, `1034500739`
+
+### 3.13.2 libER — Elden Ring API 库
+
+**来源**：[Dasaav-dsv/libER](https://github.com/Dasaav-dsv/libER)
+
+C++ API 库，利用 Elden Ring 使用 MSVC 2015（最早的 ABI 兼容 MSVC 版本）的特点，提供类型安全的游戏接口：
+
+- **Dantelion2 引擎命名空间**：DLKR（内核/同步）、DLRF（运行时类型反射）、DLSY（系统属性）、DLTX（字符串）、DLUT（工具）、DLIO（文件 I/O）
+- **自定义内存分配器替换**：无需 hook 即可替换游戏分配器 → 与我们在源码树中看到的 `game_memory_unlimiter.cpp` 直接对应
+- **非侵入式修改**：不通过代码 patch，无法被 Arxan 检测到
+- 支持按游戏版本自动更新符号定义
+
+### 3.13.3 网络架构演进确认
+
+Yui 的 changelog 记录了网络层的两次重大重写：
+
+| 版本 | 日期 | 变更 |
+|------|------|------|
+| **v1.2.0** | 2022.06 | "重写 Elden Ring P2P 系统，从废弃的 SteamNetworking 升级到新的 SteamNetworkingMessages API" |
+| **v1.7.2** | 2024.06 | "完全重写代码……事件标志正确同步、匹配验证：只有相同 Mod 的玩家可以互联" |
+
+这解释了我们在 ersc.dll 中同时看到 `SteamNetworking006`（旧）和 `SteamNetworkingMessages002`（新）字符串的原因——v1.2.0 后同时兼容两套 API。
+
+### 3.13.4 NightFyre/EldenRing-SDK
+
+**来源**：[NightFyre/EldenRing-SDK](https://github.com/NightFyre/EldenRing-SDK)
+
+简化的 Elden Ring SDK，提供全局指针初始化：
+```cpp
+HEXINTON::InitSDK("EldenRing.exe", gGameMan, gGameDataMan, gWorldCharMan);
+auto world = *HEXINTON::CGlobals::GWorldCharMan;
+```
+
+可结合我们的 AOB 签名替换其内部偏移，实现自动化地址解析。
+
 ---
 
 # 四、不可分析层（.themida）
