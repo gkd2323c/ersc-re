@@ -18,6 +18,13 @@ Thumbs.db
 ersc_trace_log.txt
 auto_trace.txt
 
+# Dynamic analysis captures
+*.etl
+*.pcapng
+*.jsonl
+analysis/dynamic/*request*.txt
+analysis/dynamic/*.summary.json
+
 # Tools (download separately)
 x64dbg/
 ScyllaHide/
