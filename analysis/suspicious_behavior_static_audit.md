@@ -298,6 +298,53 @@ YARA 规则 `Crashpad_Embedded` 命中。
 - 用 x64dbg 硬件断点记录 `ldap_*`、`sendto`、`recvfrom`、`connect` 调用栈和参数。
 - 如需确认 `CSCheatDetectionSpider` 是否上报结果，需要命中其运行时路径或抓到相关网络事件。
 
+## 社区封禁能力讨论补充
+
+后续社区讨论中出现一个更需要澄清的风险点：有玩家声称作者或管理方可以封禁特定玩家，使其无法使用 Seamless Co-op 进行联机，并会在 Discord 频道披露封禁结果。
+
+该说法当前需要继续验证，不能仅凭社区讨论直接定性。但如果属实，它意味着 Mod 至少存在以下机制之一：
+
+- 中心化封禁/授权服务
+- 按 Steam ID 或其他玩家标识进行 denylist 检查
+- 从远端同步封禁列表
+- 将作弊/补丁检测结果上报给管理方
+- 在会话建立时执行远端或半远端准入控制
+
+本地字符串中存在一些相关但不充分的证据：
+
+- `YKNX3_BREAKINBANNED`
+- `FE_PKPLAYERBANISHED`
+- `You have been blocked by the host of the session`
+- `You have blocked the host of the session`
+- `CSCheatDetectionSpider::WhatIsPatchBytes()`
+
+其中，“被房主屏蔽/屏蔽房主”可以解释为本地主机/玩家级 block 功能，不等于作者级远程封禁。`YKNX3_BREAKINBANNED` 和 `FE_PKPLAYERBANISHED` 也可能是游戏入侵/联机状态事件，不能单独证明中心化封禁。
+
+但结合以下事实：
+
+- DLL 包含 `YuiKeyNexus3` 自研网络层；
+- 运行时加载了 `WLDAP32.dll`；
+- 静态分析中存在 AntiPatch / CheatDetectionSpider 逻辑；
+- 社区声称存在管理方封禁特定玩家的行为；
+
+这一点应被提升为“需要作者或 Nexus 明确澄清”的问题。
+
+建议向作者/平台要求澄清：
+
+1. 是否存在作者、管理员或服务端级别的玩家封禁能力？
+2. 封禁依据是什么，是否来自 `CSCheatDetectionSpider` 或其他检测逻辑？
+3. 被封禁玩家的标识是什么：Steam ID、账号 ID、IP、硬件信息，还是其他标识？
+4. 封禁列表存储在哪里：本地、Steam、LDAP/目录服务、Discord bot，还是作者控制的后端？
+5. DLL 是否会定期从远端拉取 denylist/banlist？
+6. DLL 是否会上报玩家检测结果、Steam ID、会话信息或 crash/session metadata？
+7. 玩家是否能查看、申诉或删除相关记录？
+8. Discord 公示封禁结果是否包含 Steam ID、昵称或其他可识别信息？
+
+更新风险判断：
+
+- 即使当前抓包未发现非 Valve 主流量，作者级封禁能力如果属实，仍然代表中心化控制和玩家数据治理风险。
+- 该风险不一定等同恶意软件，但属于隐私、透明度、申诉机制和平台治理问题。
+
 ### UDP 抓包补充（管理员 pktmon）
 
 在管理员权限下通过 `analysis\dynamic\capture_eldenring_udp_admin.ps1` 成功启动 `pktmon`，按 `eldenring.exe` 当前 UDP 本地端口过滤，捕获 120 秒：
